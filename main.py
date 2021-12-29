@@ -1,8 +1,9 @@
 from djitellopy import tello
 import numpy as np
 import cv2
+import pygame
 
-me = tello.Tello()
+drone = tello.Tello()
 cap = cv2.VideoCapture(1)   #reads the data from the camera
 
 maxArea = 7000
@@ -33,17 +34,17 @@ def findFace(grayImg):  #method to find the closest face
             i = faceA.index(max(faceA))
             return grayImg, [faceC[i], faceA[i]]    #returns the closest face
         else:
-            return grayImg, [0, 0], 0   #if there are no faces, return 0 on everything
+            return grayImg, [[0, 0], 0]   #if there are no faces, return 0 on everything
 
 
 
-def trackFace(me, info, w, pLFError, pUDError):
+def trackFace(drone, info, w, pYVError, pUDError):
     area = info[1]
     x, y = info[0]
 
-    lfError = x - w //2
-    lfSpeed = 0.4 * lfError + 0.4 * (lfError - pLFError)
-    lfSpeed = int(np.clip(lfSpeed, -100, 100))
+    yvError = x - w //2
+    yvSpeed = 0.4 * yvError + 0.4 * (yvError - pYVError)
+    yvSpeed = int(np.clip(yvSpeed, -100, 100))
 
     udError = y - w//2
     udSpeed = 0.2 * udError + 0.2 * (udError - pUDError)
@@ -64,20 +65,33 @@ def trackFace(me, info, w, pLFError, pUDError):
 
 
     if x == 0:
-        lfSpeed = 0
-        lfError = 0
+        yvSpeed = 0
+        yvError = 0
         udSpeed = 0
         udError = 0
 
-    me.send_rc_control(0, fbSpeed, udSpeed, lfSpeed)
+    drone.send_rc_control(0, fbSpeed, udSpeed, yvSpeed)
 
-    return lfError, udError
+    return yvError, udError
 
-
-while True:
-    _, img = cap.read()
-    grayImg = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    findFace(grayImg)
-    cv2.imshow("Camera feed", img)
+def main(drone):
+    while True:
+        video = drone.get_frame_read().frame
+        cv2.resize(video, (360, 240))
+        cv2.imshow("Camera feed", video)
+        grayImg = cv2.cvtColor(video, cv2.COLOR_BGR2GRAY)
+        cv2.resize(grayImg, (360, 240))
+        grayImg, info = findFace(grayImg)
+        pYVError, pUDError = trackFace(drone, info, 180, pYVError, pUDError)
     cv2.imshow("Facetracking feed", grayImg)
     cv2.waitKey(1)
+
+
+if __name__ == '__main__':
+    drone = tello.Tello()
+    print(drone.get_battery)
+    drone.streamon()
+    try:
+        main(drone)
+    finally:
+        drone.land()
